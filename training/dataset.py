@@ -332,3 +332,136 @@ class ImageFolderDataset(Dataset):
 
     def _load_raw_labels(self):
         return None
+
+class CustomDataset(Dataset):
+    def __init__(
+            self,
+            path,  # Path to directory or zip.
+            camera_path,  # Path to camera
+            resolution=None,  # Ensure specific resolution, None = highest available.
+            data_camera_mode='custom',
+            add_camera_cond=False,
+            split='all',
+            **super_kwargs  # Additional arguments for the Dataset base class.
+    ):
+        self.data_camera_mode = data_camera_mode
+        self._path = path
+        self._zipfile = None
+        self.root = path
+        self.mask_list = None
+        self.add_camera_cond = add_camera_cond
+        root = self._path
+        self.camera_root = camera_path
+        if data_camera_mode == 'custom':
+            print('==> use custom dataset')
+            if not os.path.exists(root):
+                print('==> ERROR!!!! THIS SHOULD ONLY HAPPEN WHEN USING INFERENCE')
+                n_img = 1234
+                self._raw_shape = (n_img, 3, resolution, resolution)
+                self.img_size = resolution
+                self._type = 'dir'
+                self._all_fnames = [None for i in range(n_img)]
+                self._image_fnames = self._all_fnames
+                name = os.path.splitext(os.path.basename(path))[0]
+                print(
+                    '==> use image path: %s, num images: %d' % (
+                        self.root, len(self._all_fnames)))
+                super().__init__(name=name, raw_shape=self._raw_shape, **super_kwargs)
+                return
+            folder_list = sorted(os.listdir(root))
+            folder_list = sorted(list(useful_folder_list))
+
+            print('==> use shapenet folder number %s' % (len(folder_list)))
+            folder_list = [os.path.join(root, f) for f in folder_list]
+            all_img_list = []
+            all_mask_list = []
+
+            for folder in folder_list:
+                rgb_list = sorted(os.listdir(folder))
+                rgb_list = [n for n in rgb_list if n.endswith('.png') or n.endswith('.jpg')]
+                rgb_file_name_list = [os.path.join(folder, n) for n in rgb_list]
+                all_img_list.extend(rgb_file_name_list)
+                all_mask_list.extend(rgb_list)
+
+            self.img_list = all_img_list
+            self.mask_list = all_mask_list
+
+        else:
+            raise NotImplementedError
+
+        self.img_size = resolution
+        self._type = 'dir'
+        self._all_fnames = self.img_list
+        self._image_fnames = self._all_fnames
+        name = os.path.splitext(os.path.basename(self._path))[0]
+        print(
+            '==> use image path: %s, num images: %d' % (self.root, len(self._all_fnames)))
+        raw_shape = [len(self._image_fnames)] + list(self._load_raw_image(0).shape)
+        super().__init__(name=name, raw_shape=raw_shape, **super_kwargs)
+
+    @staticmethod
+    def _file_ext(fname):
+        return os.path.splitext(fname)[1].lower()
+
+    def _get_zipfile(self):
+        assert self._type == 'zip'
+        if self._zipfile is None:
+            self._zipfile = zipfile.ZipFile(self._path)
+        return self._zipfile
+
+    def _open_file(self, fname):
+        if self._type == 'dir':
+            return open(os.path.join(self._path, fname), 'rb')
+        if self._type == 'zip':
+            return self._get_zipfile().open(fname, 'r')
+        return None
+
+    def close(self):
+        try:
+            if self._zipfile is not None:
+                self._zipfile.close()
+        finally:
+            self._zipfile = None
+
+    def __getstate__(self):
+        return dict(super().__getstate__(), _zipfile=None)
+
+    def __getitem__(self, idx):
+        fname = self._image_fnames[self._raw_idx[idx]]
+        ori_img = cv2.imread(fname, cv2.IMREAD_UNCHANGED)
+        img = ori_img[:, :, :3][..., ::-1]
+        mask = ori_img[:, :, 3:4]
+        condinfo = np.zeros(2)
+        fname_list = fname.split('/')
+        img_idx = int(fname_list[-1].split('.')[0])
+        obj_idx = fname_list[-2]
+        syn_idx = fname_list[-3]
+
+        rotation_camera = np.load(os.path.join(self.camera_root, syn_idx, obj_idx, 'rotation.npy'))
+        elevation_camera = np.load(os.path.join(self.camera_root, syn_idx, obj_idx, 'elevation.npy'))
+        condinfo[0] = rotation_camera[img_idx] / 180 * np.pi
+        condinfo[1] = (90 - elevation_camera[img_idx]) / 180.0 * np.pi
+
+        resize_img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+        if not mask is None:
+            mask = cv2.resize(mask, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)  ########
+        else:
+            mask = np.ones(1)
+        img = resize_img.transpose(2, 0, 1)
+        background = np.zeros_like(img)
+        img = img * (mask > 0).astype(np.float) + background * (1 - (mask > 0).astype(np.float))
+        return np.ascontiguousarray(img), condinfo, np.ascontiguousarray(mask)
+
+    def _load_raw_image(self, raw_idx):
+        if raw_idx >= len(self._image_fnames) or not os.path.exists(self._image_fnames[raw_idx]):
+            resize_img = np.zeros((3, self.img_size, self.img_size))
+            return resize_img
+
+        img = cv2.imread(self._image_fnames[raw_idx])[..., ::-1]
+        resize_img = cv2.resize(img, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR) / 255.0
+        resize_img = resize_img.transpose(2, 0, 1)
+        return resize_img
+
+    def _load_raw_labels(self):
+        return None
+
