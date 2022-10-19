@@ -120,7 +120,7 @@ def init_dataset_kwargs(data, opt=None):
             )
         else:
             dataset_kwargs = dnnlib.EasyDict(
-                class_name='training.dataset.ImageFolderDataset',
+                class_name='training.dataset.CustomDataset',
                 path=data, use_labels=True, max_size=None, xflip=False, resolution=opt.img_res,
                 data_camera_mode=opt.data_camera_mode,
                 add_camera_cond=opt.add_camera_cond,
