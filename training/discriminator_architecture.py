@@ -552,7 +552,7 @@ class Discriminator(torch.nn.Module):
             if self.data_camera_mode == 'shapenet_car' \
                     or self.data_camera_mode == 'shapenet_chair' or self.data_camera_mode == 'shapenet_motorbike' \
                     or self.data_camera_mode == 'renderpeople' or self.data_camera_mode == 'ts_house' \
-                    or self.data_camera_mode == 'ts_animal' or self.data_camera_mode == 'custom:
+                    or self.data_camera_mode == 'ts_animal' or self.data_camera_mode == 'custom':
                 self.camera_dim = 2
                 self.camera_dim_enc = 2 + 2 * 2 * 3
 
