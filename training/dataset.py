@@ -369,7 +369,6 @@ class CustomDataset(Dataset):
                 super().__init__(name=name, raw_shape=self._raw_shape, **super_kwargs)
                 return
             folder_list = sorted(os.listdir(root))
-            folder_list = sorted(list(useful_folder_list))
 
             print('==> use shapenet folder number %s' % (len(folder_list)))
             folder_list = [os.path.join(root, f) for f in folder_list]
